@@ -2,9 +2,8 @@ import streamlit as st
 import time
 from dotenv import load_dotenv
 from utils.audio_processor import process_input
-from core.transcriber import transcribe_all
-from core.summarizer import summarize, generate_title
-from core.extractor import extract_action_items, extract_key_decisions, extract_questions
+from core.pipeline import build_meeting
+from core.extractor import _format_action_items, _format_decisions, _format_questions
 from core.rag_engine import build_rag_chain, ask_question
 
 load_dotenv()
@@ -383,38 +382,44 @@ if run_btn:
             update_step("audio", "done")
 
             try:
+                # ── Structured pipeline ──────────────────────────────────
                 update_step("transcript", "active")
-                transcript = transcribe_all(chunks, language)
-                update_step("transcript", "done")
+
+                def _on_progress(stage: str) -> None:
+                    if stage == "transcription":
+                        update_step("transcript", "done")
+                        update_step("title", "active")
+                    elif stage == "title":
+                        update_step("title", "done")
+                        update_step("summary", "active")
+                    elif stage == "summary":
+                        update_step("summary", "done")
+                        update_step("extract", "active")
+                    elif stage == "extraction":
+                        update_step("extract", "done")
+
+                meeting, summary = build_meeting(
+                    chunks=chunks,
+                    source=source,
+                    language=language,
+                    on_progress=_on_progress,
+                )
             finally:
                 cleanup()
 
-            update_step("title", "active")
-            title = generate_title(transcript)
-            update_step("title", "done")
-
-            update_step("summary", "active")
-            summary = summarize(transcript)
-            update_step("summary", "done")
-
-            update_step("extract", "active")
-            action_items  = extract_action_items(transcript)
-            decisions     = extract_key_decisions(transcript)
-            questions     = extract_questions(transcript)
-            update_step("extract", "done")
-
             update_step("rag", "active")
-            rag_chain = build_rag_chain(transcript)
+            rag_chain = build_rag_chain(meeting.plain_transcript())
             update_step("rag", "done")
 
             st.session_state.result = {
-                "title": title,
-                "transcript": transcript,
+                "title": meeting.title,
+                "transcript": meeting.plain_transcript(),
                 "summary": summary,
-                "action_items": action_items,
-                "key_decisions": decisions,
-                "open_questions": questions,
+                "action_items": _format_action_items(meeting.action_items),
+                "key_decisions": _format_decisions(meeting.decisions),
+                "open_questions": _format_questions(meeting.open_questions),
                 "rag_chain": rag_chain,
+                "meeting": meeting,
             }
             st.session_state.pipeline_done = True
             progress_placeholder.success("✅ Analysis complete!")
@@ -428,16 +433,19 @@ if run_btn:
                     st.session_state.pipeline_steps[k] = "pending"
             progress_placeholder.error(f"❌ {e}")
         except Exception as e:
+            # Capture the active step BEFORE resetting so we can report the
+            # correct failure stage in the error message.
+            active_step = next(
+                (k for k in ["audio","transcript","title","summary","extract","rag"]
+                 if st.session_state.pipeline_steps.get(k) == "active"),
+                "processing",
+            )
             for k in ["audio","transcript","title","summary","extract","rag"]:
                 if st.session_state.pipeline_steps.get(k) == "active":
                     st.session_state.pipeline_steps[k] = "pending"
             # Log the full exception for debugging but show a safe message to the user.
             import logging as _logging
             _logging.getLogger(__name__).exception("Pipeline error")
-            active_step = next(
-                (k for k in ["audio","transcript","title","summary","extract","rag"]
-                 if st.session_state.pipeline_steps.get(k) == "pending"), "processing"
-            )
             _friendly = {
                 "audio": "Audio processing failed. Please check the URL or file and try again.",
                 "transcript": "Transcription failed. The audio may be silent or in an unsupported format.",
