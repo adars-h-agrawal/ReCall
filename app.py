@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from utils.audio_processor import process_input
 from core.pipeline import build_meeting
 from core.extractor import _format_action_items, _format_decisions, _format_questions
-from core.rag_engine import build_rag_chain, ask_question
+from core.rag_engine import build_rag_chain_from_meeting, ask_question
 
 load_dotenv()
 
@@ -408,7 +408,7 @@ if run_btn:
                 cleanup()
 
             update_step("rag", "active")
-            rag_chain = build_rag_chain(meeting.plain_transcript())
+            rag_chain = build_rag_chain_from_meeting(meeting)
             update_step("rag", "done")
 
             st.session_state.result = {

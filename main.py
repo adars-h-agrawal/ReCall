@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from utils.audio_processor import process_input
 from core.pipeline import build_meeting
 from core.extractor import _format_action_items, _format_decisions, _format_questions
-from core.rag_engine import build_rag_chain, ask_question
+from core.rag_engine import build_rag_chain_from_meeting, ask_question
 
 load_dotenv()
 
@@ -40,7 +40,7 @@ def run_pipeline(source: str, language: str = "english") -> dict:
     print(f"Transcription complete ({len(meeting.segments)} segments). "
           f"First 300 chars: {transcript[:300]}")
 
-    rag_chain = build_rag_chain(transcript)
+    rag_chain = build_rag_chain_from_meeting(meeting)
 
     return {
         "title": meeting.title,
