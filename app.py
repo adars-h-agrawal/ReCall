@@ -11,8 +11,8 @@ load_dotenv()
 
 # ─── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AI Video Assistant",
-    page_icon="🎬",
+    page_title="RECALL — AI Meeting Intelligence",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -307,7 +307,6 @@ label { color: var(--text-muted) !important; font-size: 0.8rem !important; }
 for key, default in {
     "result": None,
     "chat_history": [],
-    "processing": False,
     "pipeline_done": False,
     "pipeline_steps": {},
 }.items():
@@ -331,8 +330,8 @@ def render_step_bar(label: str, key: str, icon: str):
 
 # ─── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="hero-title" style="font-size:1.6rem">🎬 AI<br>Video</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero-sub">Meeting Intelligence</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title" style="font-size:1.6rem">🧠 RECALL</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-sub">AI Meeting Intelligence</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown('<span class="badge badge-purple">Input</span>', unsafe_allow_html=True)
@@ -356,7 +355,7 @@ with st.sidebar:
             render_step_bar(label, step, icon)
 
 # ─── Main Area ──────────────────────────────────────────────────────────────────
-st.markdown('<div class="hero-title">AI Video Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">RECALL</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Transcribe · Summarise · Chat with your meetings</div>', unsafe_allow_html=True)
 st.markdown("---")
 
@@ -380,12 +379,15 @@ if run_btn:
                 st.info("⚙️ Pipeline running — see sidebar for live status…")
 
             update_step("audio", "active")
-            chunks = process_input(source)
+            chunks, cleanup = process_input(source)
             update_step("audio", "done")
 
-            update_step("transcript", "active")
-            transcript = transcribe_all(chunks, language)
-            update_step("transcript", "done")
+            try:
+                update_step("transcript", "active")
+                transcript = transcribe_all(chunks, language)
+                update_step("transcript", "done")
+            finally:
+                cleanup()
 
             update_step("title", "active")
             title = generate_title(transcript)
@@ -420,11 +422,32 @@ if run_btn:
             progress_placeholder.empty()
             st.rerun()
 
+        except (ValueError, EnvironmentError) as e:
+            for k in ["audio","transcript","title","summary","extract","rag"]:
+                if st.session_state.pipeline_steps.get(k) == "active":
+                    st.session_state.pipeline_steps[k] = "pending"
+            progress_placeholder.error(f"❌ {e}")
         except Exception as e:
             for k in ["audio","transcript","title","summary","extract","rag"]:
                 if st.session_state.pipeline_steps.get(k) == "active":
                     st.session_state.pipeline_steps[k] = "pending"
-            progress_placeholder.error(f"❌ Error: {e}")
+            # Log the full exception for debugging but show a safe message to the user.
+            import logging as _logging
+            _logging.getLogger(__name__).exception("Pipeline error")
+            active_step = next(
+                (k for k in ["audio","transcript","title","summary","extract","rag"]
+                 if st.session_state.pipeline_steps.get(k) == "pending"), "processing"
+            )
+            _friendly = {
+                "audio": "Audio processing failed. Please check the URL or file and try again.",
+                "transcript": "Transcription failed. The audio may be silent or in an unsupported format.",
+                "title": "Title generation failed. Please try again.",
+                "summary": "Summarization failed. Please try again.",
+                "extract": "Extraction failed. Please try again.",
+                "rag": "RAG indexing failed. Please try again.",
+                "processing": "An unexpected error occurred. Please try again.",
+            }
+            progress_placeholder.error(f"❌ {_friendly.get(active_step, _friendly['processing'])}")
 
 # ── Results ──────────────────────────────────────────────────────────────────────
 if st.session_state.result:
@@ -530,7 +553,7 @@ else:
     # Empty state
     st.markdown("""
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5rem 2rem;text-align:center">
-        <div style="font-size:4rem;margin-bottom:1rem">🎬</div>
+        <div style="font-size:4rem;margin-bottom:1rem">🧠</div>
         <div style="font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);margin-bottom:0.5rem">
             Ready to Analyse
         </div>

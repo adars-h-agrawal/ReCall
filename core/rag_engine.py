@@ -1,97 +1,85 @@
-import os
-from langchain_mistralai import ChatMistralAI
-from langchain_core.prompts import ChatPromptTemplate
+"""
+core/rag_engine.py
+───────────────────
+Retrieval-Augmented Generation (RAG) chat over meeting transcripts
+for RECALL — AI Meeting Intelligence.
+
+build_rag_chain() indexes the transcript into ChromaDB and returns an
+LCEL chain that can be used to answer questions via ask_question().
+
+Known limitation (Phase 1):
+  ChromaDB uses a single shared collection for all meetings.  Meeting
+  isolation will be addressed in a future phase.
+"""
+
+from __future__ import annotations
+
+import logging
+
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from core.vector_store import build_vector_store, load_vector_store, get_retriever
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
-def get_llm():
-    return ChatMistralAI(
-        model="mistral-small-latest",
-        mistral_api_key=os.getenv("MISTRAL_API_KEY"),
-        temperature=0.3,
-    )
+from core.llm import get_llm_default
+from core.vector_store import build_vector_store, get_retriever
 
-def format_docs(docs):
-    return "\n\n".join([doc.page_content for doc in docs])
+logger = logging.getLogger(__name__)
 
-def build_rag_chain(transcript:str):
+_RAG_SYSTEM_PROMPT = """You are an expert meeting assistant. Answer the user's question \
+based ONLY on the meeting transcript context provided below.
+
+If the answer is not found in the context, say: \
+"I could not find this information in the meeting transcript."
+
+Always be concise and precise. If quoting someone, mention it clearly.
+
+Context from meeting transcript:
+{context}"""
+
+
+def _format_docs(docs) -> str:
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+def build_rag_chain(transcript: str):
+    """Index *transcript* into ChromaDB and return a ready-to-use RAG chain.
+
+    Parameters
+    ----------
+    transcript:
+        The full meeting transcript as a plain string.
+
+    Returns
+    -------
+    Runnable
+        An LCEL chain that accepts a question string and returns an answer string.
+    """
+    logger.debug("Building RAG chain from transcript (%d chars).", len(transcript))
 
     vector_store = build_vector_store(transcript)
+    retriever = get_retriever(vector_store, k=4)
+    llm = get_llm_default()
 
-    retriever = get_retriever(vector_store, k = 4)
-
-    llm = get_llm()
-
-    prompt = ChatPromptTemplate.from_messages(
-
-        [(
-            "system",
-            """You are an expert meeting assistant. Answer the user's question 
-based ONLY on the meeting transcript context provided below.
-
-If the answer is not found in the context, say: 
-"I could not find this information in the meeting transcript."
-
-Always be concise and precise. If quoting someone, mention it clearly.
-
-Context from meeting transcript:
-{context}""",
-        ),
-        ("human", "{question}"),
-    ]
-    )
-
-    #full LCEL Rag pipeline 
-
-    rag_chain = (
-
-        {"context" : retriever | RunnableLambda(format_docs),
-         "question": RunnablePassthrough()
-         }
-         |prompt|llm|StrOutputParser()
-    )
-
-    return rag_chain
-
-
-def load_rag_chain():
-    vector_store = load_vector_store()
-    retriver = get_retriever()
-
-    llm = get_llm()
     prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            """You are an expert meeting assistant. Answer the user's question 
-based ONLY on the meeting transcript context provided below.
-
-If the answer is not found in the context, say: 
-"I could not find this information in the meeting transcript."
-
-Always be concise and precise. If quoting someone, mention it clearly.
-
-Context from meeting transcript:
-{context}""",
-        ),
+        ("system", _RAG_SYSTEM_PROMPT),
         ("human", "{question}"),
     ])
 
     rag_chain = (
         {
-            "context":  retriver| RunnableLambda(format_docs),
+            "context": retriever | RunnableLambda(_format_docs),
             "question": RunnablePassthrough(),
         }
         | prompt
         | llm
         | StrOutputParser()
     )
-
     return rag_chain
 
 
-def ask_question(rag_chain, question:str) -> str:
-    print(f"Question : {question}")
+def ask_question(rag_chain, question: str) -> str:
+    """Invoke *rag_chain* with *question* and return the answer string."""
+    logger.debug("RAG question: %s", question)
     answer = rag_chain.invoke(question)
-    print(f"answer :{answer}")
+    logger.debug("RAG answer length: %d chars", len(answer))
     return answer

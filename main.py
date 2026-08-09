@@ -8,13 +8,17 @@ from core.rag_engine import build_rag_chain, ask_question
 
 load_dotenv()
 
-def run_pipeline(source :str, language :str = "english") -> dict:
-    print("starting AI Video Assistant")
+def run_pipeline(source: str, language: str = "english") -> dict:
+    print("Starting RECALL — AI Meeting Intelligence")
 
-    chunks = process_input(source)
+    chunks, cleanup = process_input(source)
 
-    transcript = transcribe_all(chunks,language)
-    print(f"raw transcription (first 300 characters ) {transcript[:300]}")
+    try:
+        transcript = transcribe_all(chunks, language)
+    finally:
+        cleanup()
+
+    print(f"Raw transcription (first 300 characters): {transcript[:300]}")
 
     title = generate_title(transcript)
 
