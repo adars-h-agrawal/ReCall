@@ -61,13 +61,17 @@ from core.vector_store import add_meeting_segments, build_vector_store, get_retr
 
 logger = logging.getLogger(__name__)
 
-_RAG_SYSTEM_PROMPT = """You are an expert meeting assistant. Answer the user's question \
-based ONLY on the meeting transcript context provided below.
+_RAG_SYSTEM_PROMPT = """You are RECALL, an evidence-grounded meeting intelligence assistant.
 
-If the answer is not found in the context, say: \
-"I could not find this information in the meeting transcript."
+Answer the user's question based on the meeting transcript context provided below.
 
-Always be concise and precise. If quoting someone, mention it clearly.
+IMPORTANT:
+- If the retrieved context contains information that directly or indirectly answers the question, synthesize a clear, concise answer from that context.
+- Always draw your answer from the retrieved context — do not rely on general knowledge.
+- If relevant information exists in the context, answer the question. Do NOT say the information is unavailable when the context clearly contains an answer.
+- Only say "I could not find this information in the meeting transcript." when the retrieved context genuinely does not contain an answer.
+- Be concise and precise. Do not invent facts, names, timestamps, or details.
+- When synthesizing multiple context excerpts, be clear about what was discussed.
 
 Context from meeting transcript:
 {context}"""
@@ -76,6 +80,26 @@ Context from meeting transcript:
 def _format_docs(docs) -> str:
     """Format documents for LLM context."""
     return "\n\n".join(doc.page_content for doc in docs)
+
+
+def _is_no_answer(response_text: str) -> bool:
+    """Check if the LLM response indicates no answer was found.
+
+    The canonical no-answer response is:
+        "I could not find this information in the meeting transcript."
+
+    Parameters
+    ----------
+    response_text : str
+        The LLM-generated answer text.
+
+    Returns
+    -------
+    bool
+        True if response indicates no answer found, False otherwise.
+    """
+    canonical_no_answer = "I could not find this information in the meeting transcript."
+    return canonical_no_answer in response_text.strip()
 
 
 def build_structured_rag_response(
@@ -96,6 +120,7 @@ def build_structured_rag_response(
     -------
     RAGAnswer
         A structured response with answer and deduplicated evidence.
+        If the answer indicates no information was found, evidence is empty.
 
     Deduplication
     --------
@@ -105,7 +130,18 @@ def build_structured_rag_response(
 
     We deduplicate by segment_id, preserving the original segment's
     timestamp range (start, end).  The first occurrence wins.
+
+    No-Answer Guarantee
+    -------------------
+    If the LLM answer is the canonical no-answer response, evidence is empty.
+    This prevents displaying irrelevant retrieved documents as "supporting"
+    an answer that does not exist.
     """
+    # If there's no answer, return empty evidence
+    if _is_no_answer(answer_text):
+        logger.debug("No-answer response detected; returning empty evidence")
+        return RAGAnswer(answer=answer_text, evidence=[])
+
     # Extract evidence from each retrieved document
     # (before deduplication, so we capture all context)
     evidence_list: list[RAGEvidence] = []
