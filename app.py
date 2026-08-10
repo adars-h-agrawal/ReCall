@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from utils.audio_processor import process_input
 from core.pipeline import build_meeting
 from core.extractor import _format_action_items, _format_decisions, _format_questions
-from core.rag_engine import build_rag_chain_from_meeting, ask_question
+from core.rag_engine import build_rag_chains_from_meeting, ask_question_structured
+from core.models.transcript import format_timestamp
 
 load_dotenv()
 
@@ -408,7 +409,7 @@ if run_btn:
                 cleanup()
 
             update_step("rag", "active")
-            rag_chain = build_rag_chain_from_meeting(meeting)
+            rag_chain, retriever_chain = build_rag_chains_from_meeting(meeting)
             update_step("rag", "done")
 
             st.session_state.result = {
@@ -419,6 +420,7 @@ if run_btn:
                 "key_decisions": _format_decisions(meeting.decisions),
                 "open_questions": _format_questions(meeting.open_questions),
                 "rag_chain": rag_chain,
+                "retriever_chain": retriever_chain,
                 "meeting": meeting,
             }
             st.session_state.pipeline_done = True
@@ -547,9 +549,23 @@ if st.session_state.result:
 
     if send_btn and user_input.strip():
         with st.spinner("Thinking…"):
-            answer = ask_question(r["rag_chain"], user_input.strip())
+            rag_response = ask_question_structured(
+                r["rag_chain"],
+                r["retriever_chain"],
+                user_input.strip()
+            )
+        # Format answer with evidence timestamps
+        answer_text = rag_response.answer
+        if rag_response.evidence:
+            evidence_str = "\n\n**📄 Evidence:**"
+            for ev in rag_response.evidence:
+                start_fmt = format_timestamp(ev.start)
+                end_fmt = format_timestamp(ev.end)
+                evidence_str += f"\n- {start_fmt}–{end_fmt}: \"{ev.text[:100]}...\""
+            answer_text += evidence_str
+
         st.session_state.chat_history.append({"role": "user",      "content": user_input.strip()})
-        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+        st.session_state.chat_history.append({"role": "assistant", "content": answer_text})
         st.rerun()
 
     if st.session_state.chat_history:

@@ -30,17 +30,33 @@ Retrieval isolation guarantee (canonical path):
           → get_retriever(vector_store, meeting_id=meeting.id, k=4)
           → filter: {"meeting_id": meeting.id}
           → only this meeting's documents reach the LLM
+
+Phase 3C changes
+----------------
+- build_structured_rag_response(answer_text, retrieved_docs) converts
+  retrieved Chroma Documents into RAGEvidence entries.
+- All evidence timestamps, segment IDs, and text come from Document
+  metadata and content — the LLM cannot invent these.
+- Evidence is deduplicated by segment_id so the same transcript segment
+  does not appear multiple times due to sub-chunking or retrieval overlap.
+- ask_question_structured(rag_chain, question) orchestrates retrieval,
+  LLM invocation, and evidence extraction into a RAGAnswer.
+- ask_question(rag_chain, question) remains backward compatible,
+  returning only the answer string.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from core.llm import get_llm_default
+from core.models.rag_answer import RAGAnswer, RAGEvidence
 from core.vector_store import add_meeting_segments, build_vector_store, get_retriever
 
 logger = logging.getLogger(__name__)
@@ -58,7 +74,63 @@ Context from meeting transcript:
 
 
 def _format_docs(docs) -> str:
+    """Format documents for LLM context."""
     return "\n\n".join(doc.page_content for doc in docs)
+
+
+def build_structured_rag_response(
+    answer_text: str,
+    retrieved_docs: list[Document],
+) -> RAGAnswer:
+    """Convert retrieved documents into structured RAG response with evidence.
+
+    Parameters
+    ----------
+    answer_text:
+        The natural-language answer from the LLM.
+    retrieved_docs:
+        The list of Chroma Documents returned by the retriever.
+        Each carries metadata: segment_id, start, end, meeting_id, etc.
+
+    Returns
+    -------
+    RAGAnswer
+        A structured response with answer and deduplicated evidence.
+
+    Deduplication
+    --------
+    The same TranscriptSegment may appear multiple times due to:
+    - Sub-chunking (long segments split into multiple documents)
+    - Retrieval overlap (k=4 returns multiple chunks from the same segment)
+
+    We deduplicate by segment_id, preserving the original segment's
+    timestamp range (start, end).  The first occurrence wins.
+    """
+    # Extract evidence from each retrieved document
+    # (before deduplication, so we capture all context)
+    evidence_list: list[RAGEvidence] = []
+    seen_segment_ids: set[str] = set()
+
+    for doc in retrieved_docs:
+        meta = doc.metadata
+        segment_id = meta.get("segment_id", "")
+        start = meta.get("start", 0.0)
+        end = meta.get("end", 0.0)
+
+        # Deduplicate by segment_id: only create evidence for the first
+        # occurrence of each segment
+        if segment_id and segment_id not in seen_segment_ids:
+            seen_segment_ids.add(segment_id)
+            evidence_list.append(
+                RAGEvidence(
+                    segment_id=segment_id,
+                    start=start,
+                    end=end,
+                    text=doc.page_content,
+                )
+            )
+
+    return RAGAnswer(answer=answer_text, evidence=evidence_list)
 
 
 def _build_chain(vector_store, meeting_id: str | None = None):
@@ -92,6 +164,30 @@ def _build_chain(vector_store, meeting_id: str | None = None):
     )
 
 
+def _build_retriever_chain(vector_store, meeting_id: str | None = None):
+    """Build an LCEL chain that returns retrieved documents (not the answer).
+
+    Used internally by ask_question_structured to get the raw documents
+    for evidence extraction while still using the same meeting-scoped
+    retriever as the main chain.
+
+    Parameters
+    ----------
+    vector_store:
+        A Chroma instance already populated with meeting documents.
+    meeting_id:
+        When provided (non-empty), the retriever is scoped to this
+        meeting via a Chroma metadata filter.
+
+    Returns
+    -------
+    Runnable
+        An LCEL chain that accepts a question and returns retrieved documents.
+    """
+    retriever = get_retriever(vector_store, meeting_id=meeting_id, k=4)
+    return retriever
+
+
 def build_rag_chain_from_meeting(meeting) -> object:
     """Index a Meeting's TranscriptSegments and return a meeting-scoped RAG chain.
 
@@ -118,6 +214,43 @@ def build_rag_chain_from_meeting(meeting) -> object:
         segments=meeting.segments,
     )
     return _build_chain(vector_store, meeting_id=meeting.id)
+
+
+def build_rag_chains_from_meeting(meeting) -> tuple[object, object]:
+    """Index a Meeting and return both answer and retriever chains.
+
+    Phase 3C: structured RAG requires both chains — one for generating
+    answers and one for independently extracting evidence.  Both use
+    the same meeting_id scoping for consistent isolation.
+
+    Parameters
+    ----------
+    meeting : Meeting
+        A fully populated Meeting object with non-empty segments.
+
+    Returns
+    -------
+    tuple[Runnable, Runnable]
+        A pair of LCEL chains:
+        - rag_chain: generates natural-language answers
+        - retriever_chain: returns the raw retrieved Documents for evidence
+
+    Notes
+    -----
+    - Use with ask_question_structured() to get structured RAG responses.
+    - Both chains are scoped to meeting.id, preserving Phase 3B isolation.
+    """
+    logger.info(
+        "Building structured RAG chains from Meeting %s (%d segments).",
+        meeting.id, len(meeting.segments),
+    )
+    vector_store = add_meeting_segments(
+        meeting_id=meeting.id,
+        segments=meeting.segments,
+    )
+    rag_chain = _build_chain(vector_store, meeting_id=meeting.id)
+    retriever_chain = _build_retriever_chain(vector_store, meeting_id=meeting.id)
+    return rag_chain, retriever_chain
 
 
 def build_rag_chain(transcript: str) -> object:
@@ -151,8 +284,77 @@ def build_rag_chain(transcript: str) -> object:
 
 
 def ask_question(rag_chain, question: str) -> str:
-    """Invoke *rag_chain* with *question* and return the answer string."""
-    logger.debug("RAG question: %s", question)
+    """Legacy: invoke *rag_chain* with *question* and return the answer string.
+
+    This function is backward compatible and continues to work with
+    existing application code that expects a simple string response.
+
+    Parameters
+    ----------
+    rag_chain:
+        An LCEL chain returned by build_rag_chain_from_meeting() or
+        build_rag_chain().
+    question:
+        The user's question.
+
+    Returns
+    -------
+    str
+        The natural-language answer (without evidence metadata).
+    """
+    logger.debug("RAG question (legacy): %s", question)
     answer = rag_chain.invoke(question)
     logger.debug("RAG answer length: %d chars", len(answer))
     return answer
+
+
+def ask_question_structured(rag_chain, retriever_chain, question: str) -> RAGAnswer:
+    """Invoke *rag_chain* and *retriever_chain* to return a structured RAG response.
+
+    This is the canonical Phase 3C+ path for applications that need
+    evidence-grounded answers.  The retriever is guaranteed to be scoped
+    to the current meeting (via Phase 3B isolation), so evidence is
+    sourced only from the intended meeting.
+
+    Parameters
+    ----------
+    rag_chain:
+        An LCEL chain returned by build_rag_chain_from_meeting() that
+        generates natural-language answers.
+    retriever_chain:
+        An LCEL chain returned by _build_retriever_chain() that returns
+        the actual Chroma Documents for evidence extraction.
+    question:
+        The user's question.
+
+    Returns
+    -------
+    RAGAnswer
+        A structured response with:
+        - answer: the natural-language response
+        - evidence: deduplicated transcript excerpts supporting the answer
+
+    Notes
+    -----
+    - Both chains must use the same meeting_id scoping.
+    - If retrieval returns 0 documents, evidence is empty.
+    - Timestamps and segment IDs are never influenced by LLM output.
+    """
+    logger.debug("RAG question (structured): %s", question)
+
+    # Invoke the answer chain
+    answer_text = rag_chain.invoke(question)
+    logger.debug("RAG answer length: %d chars", len(answer_text))
+
+    # Independently retrieve and convert to evidence
+    retrieved_docs = retriever_chain.invoke(question)
+    logger.debug("Retrieved %d documents for evidence", len(retrieved_docs))
+
+    # Build the structured response
+    structured_response = build_structured_rag_response(answer_text, retrieved_docs)
+    logger.debug(
+        "Structured response: answer=%d chars, %d evidence items",
+        len(structured_response.answer), len(structured_response.evidence),
+    )
+
+    return structured_response
