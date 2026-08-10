@@ -20,15 +20,34 @@ Phase 3A changes
 - The old build_vector_store(transcript: str) is kept as a backward-
   compatible adapter used by the legacy rag_engine path.
 
-Known limitation (Phase 3A):
-  All meetings still share a single ChromaDB collection.  Per-meeting
-  retrieval filtering will be addressed in Phase 3B.
+Phase 3B changes
+----------------
+- get_retriever() now accepts an explicit meeting_id parameter.
+  When meeting_id is provided (non-empty string), a Chroma metadata
+  filter {"meeting_id": meeting_id} is applied so retrieval is scoped
+  to documents belonging only to that meeting.
+- The canonical path (build_rag_chain_from_meeting) ALWAYS supplies
+  meeting_id.  The legacy path (build_rag_chain) passes None and retains
+  the previous unscoped behavior with a documented warning.
+- Pre-Phase-3A documents that lack the meeting_id field will NOT be
+  returned by a meeting-scoped query, providing natural isolation from
+  legacy data.
+
+Known limitation (Phase 3B):
+  All meetings still share a single ChromaDB collection.  The per-meeting
+  filter provides retrieval isolation but not storage isolation.  A
+  collection-per-meeting architecture is a future consideration.
+
+Legacy data compatibility:
+  Documents indexed before Phase 3A lack the meeting_id field.  They
+  will not be returned by meeting-scoped queries.  To include them in
+  a meeting's context, re-index the meeting via the canonical pipeline.
 
 Data model
 ----------
 Chroma stores Documents with these metadata fields:
 
-  meeting_id  : str   — UUID of the meeting (never empty)
+  meeting_id  : str   — UUID of the meeting (never empty in canonical path)
   segment_id  : str   — UUID of the TranscriptSegment
   start       : float — segment start in seconds
   end         : float — segment end in seconds
@@ -269,9 +288,54 @@ def build_vector_store(transcript: str) -> Chroma:
 
 # ── Retriever ─────────────────────────────────────────────────────────────────
 
-def get_retriever(vector_store: Chroma, k: int = 4):
-    """Return a similarity-search retriever over *vector_store*."""
+def get_retriever(
+    vector_store: Chroma,
+    meeting_id: Optional[str] = None,
+    k: int = 4,
+):
+    """Return a similarity-search retriever over *vector_store*.
+
+    Parameters
+    ----------
+    vector_store:
+        A Chroma instance returned by add_meeting_segments() or
+        build_vector_store().
+    meeting_id:
+        When provided (non-empty string), a Chroma metadata filter
+        ``{"meeting_id": meeting_id}`` is applied so ONLY documents
+        belonging to that meeting are retrieved.
+
+        The canonical Meeting path MUST always supply this argument.
+
+        Pass None (or omit) only for the legacy plain-transcript path
+        that has no meeting identity.  In that case retrieval is
+        unscoped and may return documents from any meeting — this is a
+        documented limitation of the legacy adapter.
+    k:
+        Number of documents to retrieve per query.
+
+    Returns
+    -------
+    VectorStoreRetriever
+        A retriever that applies the meeting-scoped filter when
+        meeting_id is provided.
+    """
+    search_kwargs: dict = {"k": k}
+
+    if meeting_id:
+        # Apply Chroma metadata filter to restrict retrieval to this meeting.
+        # Documents from other meetings (or legacy documents without a
+        # meeting_id) will not be returned.
+        search_kwargs["filter"] = {"meeting_id": meeting_id}
+        logger.debug(
+            "Retriever scoped to meeting_id=%s (k=%d).", meeting_id, k
+        )
+    else:
+        logger.debug(
+            "Retriever UNSCOPED (legacy path, no meeting_id supplied, k=%d).", k
+        )
+
     return vector_store.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": k},
+        search_kwargs=search_kwargs,
     )

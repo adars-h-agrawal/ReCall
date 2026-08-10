@@ -6,16 +6,30 @@ for RECALL — AI Meeting Intelligence.
 
 Phase 3A changes
 ----------------
-- build_rag_chain_from_meeting(meeting) is the new canonical entry point.
+- build_rag_chain_from_meeting(meeting) is the canonical entry point.
   It uses add_meeting_segments() to index TranscriptSegments with full
   provenance metadata, then returns an LCEL RAG chain.
 - build_rag_chain(transcript) is preserved as a backward-compatible
-  adapter used by app.py and main.py until they are migrated.
+  adapter.
 
-Known limitation (Phase 3A):
-  ChromaDB still uses a single shared collection for all meetings.
-  Retrieved documents may include chunks from other meetings.
-  Per-meeting retrieval filtering will be added in Phase 3B.
+Phase 3B changes
+----------------
+- _build_chain() now accepts meeting_id and passes it to get_retriever()
+  so the retriever applies a Chroma metadata filter:
+      {"meeting_id": meeting_id}
+  This ensures ONLY documents belonging to the current meeting are
+  retrieved.  Cross-meeting contamination is blocked at retrieval time —
+  not in the LLM prompt.
+- build_rag_chain_from_meeting(meeting) passes meeting.id through the
+  entire chain.
+- build_rag_chain(transcript) retains unscoped behavior (meeting_id=None)
+  with a documented warning about lack of isolation.
+
+Retrieval isolation guarantee (canonical path):
+  Meeting → add_meeting_segments(meeting.id, segments)
+          → get_retriever(vector_store, meeting_id=meeting.id, k=4)
+          → filter: {"meeting_id": meeting.id}
+          → only this meeting's documents reach the LLM
 """
 
 from __future__ import annotations
@@ -47,9 +61,19 @@ def _format_docs(docs) -> str:
     return "\n\n".join(doc.page_content for doc in docs)
 
 
-def _build_chain(vector_store):
-    """Build the LCEL RAG chain over an existing vector store."""
-    retriever = get_retriever(vector_store, k=4)
+def _build_chain(vector_store, meeting_id: str | None = None):
+    """Build the LCEL RAG chain over *vector_store*.
+
+    Parameters
+    ----------
+    vector_store:
+        A Chroma instance already populated with meeting documents.
+    meeting_id:
+        When provided (non-empty), the retriever is scoped to this
+        meeting via a Chroma metadata filter so other meetings' documents
+        are never retrieved.  Pass None only for the legacy unscoped path.
+    """
+    retriever = get_retriever(vector_store, meeting_id=meeting_id, k=4)
     llm = get_llm_default()
 
     prompt = ChatPromptTemplate.from_messages([
@@ -69,12 +93,11 @@ def _build_chain(vector_store):
 
 
 def build_rag_chain_from_meeting(meeting) -> object:
-    """Index a Meeting's TranscriptSegments and return a RAG chain.
+    """Index a Meeting's TranscriptSegments and return a meeting-scoped RAG chain.
 
-    This is the canonical RAG entry point for Phase 3A+.
-    Uses add_meeting_segments() so every indexed document carries full
-    provenance (meeting_id, segment_id, start, end, speaker, language,
-    source).
+    Canonical entry point for Phase 3A+.  The retriever is filtered to
+    ``meeting.id`` so only documents belonging to this meeting are
+    retrieved — cross-meeting contamination is blocked at retrieval time.
 
     Parameters
     ----------
@@ -94,14 +117,16 @@ def build_rag_chain_from_meeting(meeting) -> object:
         meeting_id=meeting.id,
         segments=meeting.segments,
     )
-    return _build_chain(vector_store)
+    return _build_chain(vector_store, meeting_id=meeting.id)
 
 
 def build_rag_chain(transcript: str) -> object:
     """Legacy adapter: index a plain transcript string and return a RAG chain.
 
-    Preserved for backward compatibility with app.py and main.py.
-    Documents indexed via this path carry empty provenance metadata.
+    WARNING: This path has NO meeting isolation.  The retriever is
+    unscoped (no metadata filter applied) and may return documents from
+    other meetings stored in the same Chroma collection.  Use only for
+    backward compatibility.
 
     Prefer build_rag_chain_from_meeting() for all new code.
 
@@ -115,12 +140,14 @@ def build_rag_chain(transcript: str) -> object:
     Runnable
         An LCEL chain that accepts a question string and returns an answer.
     """
-    logger.debug(
-        "build_rag_chain (legacy): indexing transcript (%d chars).",
+    logger.warning(
+        "build_rag_chain (legacy): unscoped retrieval — "
+        "no meeting isolation applied.  %d chars.",
         len(transcript),
     )
     vector_store = build_vector_store(transcript)
-    return _build_chain(vector_store)
+    # meeting_id=None → unscoped retriever (legacy behavior)
+    return _build_chain(vector_store, meeting_id=None)
 
 
 def ask_question(rag_chain, question: str) -> str:
