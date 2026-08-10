@@ -1,12 +1,12 @@
 # RECALL — AI Meeting Intelligence
 
-RECALL is a local-first AI meeting assistant that transcribes audio from YouTube URLs or local media files, extracts structured insights (summary, action items, decisions, open questions), and lets you have a conversational RAG chat over the transcript — all from a Streamlit UI.
+RECALL is a local-first AI meeting assistant that transcribes audio from YouTube URLs or local media files, extracts structured insights (summary, action items, decisions, open questions), and lets you have a conversational RAG chat over the transcript with evidence grounding — all from a Streamlit UI.
 
 ---
 
 ## Current Features
 
-- **YouTube & local file ingestion** — paste a YouTube URL or a local file path (mp4, mp3, m4a, wav, and more)
+- **YouTube & local file ingestion** — paste a YouTube URL or upload a local file (mp4, mp3, m4a, wav, and more)
 - **English transcription** — local OpenAI Whisper model (no API key required for transcription)
 - **Hindi/Hinglish transcription** — Sarvam AI speech-to-text-translate API (requires `SARVAM_API_KEY`)
 - **Meeting summary** — map-reduce summarization via Mistral, output as bullet points
@@ -14,7 +14,9 @@ RECALL is a local-first AI meeting assistant that transcribes audio from YouTube
 - **Action item extraction** — task, owner, and deadline extracted as a numbered list
 - **Key decision extraction** — numbered list of decisions made in the meeting
 - **Open question extraction** — unresolved questions and follow-up topics
-- **RAG chat** — ask free-form questions over the transcript, answered by Mistral with context from ChromaDB
+- **Meeting-scoped RAG chat** — ask free-form questions over the transcript, answered by Mistral with context from ChromaDB
+- **Evidence-grounded answers** — RAG responses include exact transcript evidence with timestamps for auditability
+- **Meeting isolation** — multiple meetings can be processed without transcript cross-contamination
 
 ---
 
@@ -134,10 +136,8 @@ python main.py
 The following features are **not yet implemented**:
 
 - **Speaker diarization** — transcripts do not identify who is speaking
-- **Timestamps** — transcript segments do not retain start/end times
-- **Meeting isolation** — all meetings share one ChromaDB collection; chunks from different meetings can mix in retrieval
-- **Structured extraction** — action items, decisions, and questions are returned as formatted strings, not structured objects
-- **Evidence/timestamp citations** — RAG answers do not reference specific transcript locations
-- **PDF / TXT export** — no export functionality exists yet
 - **Multi-meeting history** — there is no persistent meeting list or session management across app restarts
-- **File uploader** — local files must be entered as a path; drag-and-drop upload is not supported yet
+- **PDF / TXT export** — no export functionality exists yet
+- **Clickable evidence timestamps** — evidence shows timestamps but clicking does not jump to video position
+- **Audio playback with markers** — no embedded audio player with evidence markers
+- **Interactive evidence viewer** — evidence highlighting in full transcript view

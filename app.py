@@ -1,11 +1,14 @@
 import streamlit as st
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 from utils.audio_processor import process_input
 from core.pipeline import build_meeting
 from core.extractor import _format_action_items, _format_decisions, _format_questions
 from core.rag_engine import build_rag_chains_from_meeting, ask_question_structured
 from core.models.transcript import format_timestamp
+from core.report_generator import generate_pdf_report, generate_txt_report
+from core.transcript_formatter import format_transcript_for_display, format_transcript_for_plain_text
 
 load_dotenv()
 
@@ -334,8 +337,29 @@ with st.sidebar:
     st.markdown('<div class="hero-sub">AI Meeting Intelligence</div>', unsafe_allow_html=True)
     st.markdown("---")
 
-    st.markdown('<span class="badge badge-purple">Input</span>', unsafe_allow_html=True)
-    source = st.text_input("YouTube URL or File Path", placeholder="https://youtube.com/watch?v=... or /path/to/file.mp4")
+    st.markdown('<span class="badge badge-purple">Input Source</span>', unsafe_allow_html=True)
+
+    input_type = st.radio("Choose input type", ["YouTube URL", "Upload File"], horizontal=True, label_visibility="collapsed")
+
+    source = None
+    if input_type == "YouTube URL":
+        source = st.text_input(
+            "YouTube URL",
+            placeholder="https://youtube.com/watch?v=...",
+            label_visibility="collapsed"
+        )
+    else:
+        uploaded_file = st.file_uploader(
+            "Select audio or video file",
+            type=("mp3", "m4a", "wav", "mp4", "webm", "ogg", "flac", "aac", "mkv", "mov", "avi"),
+            label_visibility="collapsed"
+        )
+        if uploaded_file is not None:
+            # Save uploaded file to a temporary location
+            import tempfile as _tf
+            with _tf.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp:
+                tmp.write(uploaded_file.getbuffer())
+                source = tmp.name
 
     language = st.selectbox("Language", ["english", "hinglish"], index=0)
 
@@ -355,14 +379,20 @@ with st.sidebar:
             render_step_bar(label, step, icon)
 
 # ─── Main Area ──────────────────────────────────────────────────────────────────
-st.markdown('<div class="hero-title">RECALL</div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-sub">Transcribe · Summarise · Chat with your meetings</div>', unsafe_allow_html=True)
-st.markdown("---")
+if st.session_state.result:
+    r = st.session_state.result
+    # Display meeting title prominently
+    st.markdown(f'<div class="hero-title" style="font-size:2.2rem;margin-bottom:0.5rem">{r["title"]}</div>', unsafe_allow_html=True)
+    st.markdown('---')
+else:
+    st.markdown('<div class="hero-title">RECALL</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-sub">Transcribe · Summarise · Chat with your meetings</div>', unsafe_allow_html=True)
+    st.markdown("---")
 
 # ── Run Pipeline ────────────────────────────────────────────────────────────────
 if run_btn:
-    if not source.strip():
-        st.error("Please enter a YouTube URL or file path.")
+    if not source or not source.strip():
+        st.error("Please enter a YouTube URL or upload a file.")
     else:
         st.session_state.pipeline_done = False
         st.session_state.result = None
@@ -463,15 +493,6 @@ if run_btn:
 if st.session_state.result:
     r = st.session_state.result
 
-    # Title banner
-    st.markdown(f"""
-    <div class="card">
-        <div class="card-title">📌 Session Title</div>
-        <div style="font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:700;color:var(--text)">
-            {r['title']}
-        </div>
-    </div>""", unsafe_allow_html=True)
-
     # Top row: summary + transcript
     col1, col2 = st.columns([3, 2], gap="medium")
 
@@ -484,7 +505,12 @@ if st.session_state.result:
 
     with col2:
         with st.expander("📝 Full Transcript", expanded=False):
-            st.markdown(f'<div class="transcript-box">{r["transcript"]}</div>', unsafe_allow_html=True)
+            # Use structured TranscriptSegment data for display
+            if r["meeting"].segments:
+                transcript_html = format_transcript_for_display(r["meeting"].segments)
+                st.markdown(f'<div class="transcript-box">{transcript_html}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="transcript-box">No transcript available.</div>', unsafe_allow_html=True)
 
     # Second row: action items | decisions | questions
     c1, c2, c3 = st.columns(3, gap="medium")
@@ -509,6 +535,32 @@ if st.session_state.result:
             <div class="card-title">❓ Open Questions</div>
             <div class="card-content">{r['open_questions']}</div>
         </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Export Options ────────────────────────────────────────────────────────────
+    st.markdown('<div style="font-family:\'Syne\',sans-serif;font-size:1rem;font-weight:700;margin-bottom:0.5rem">📥 Export Report</div>', unsafe_allow_html=True)
+    export_col1, export_col2 = st.columns(2, gap="medium")
+
+    with export_col1:
+        pdf_bytes = generate_pdf_report(r["meeting"], r["summary"])
+        st.download_button(
+            label="📄 Download PDF",
+            data=pdf_bytes,
+            file_name=f"ReCall-{r['meeting'].title or 'Meeting'}-Report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+
+    with export_col2:
+        txt_content = generate_txt_report(r["meeting"], r["summary"])
+        st.download_button(
+            label="📋 Download TXT",
+            data=txt_content,
+            file_name=f"ReCall-{r['meeting'].title or 'Meeting'}-Report.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
 
     st.markdown("---")
 
