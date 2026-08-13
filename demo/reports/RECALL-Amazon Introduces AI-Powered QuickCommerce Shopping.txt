@@ -1,0 +1,96 @@
+======================================================================
+RECALL — AI Meeting Intelligence
+======================================================================
+
+MEETING
+----------------------------------------------------------------------
+Title:    Amazon Introduces AI-Powered QuickCommerce Shopping
+Source:   /var/folders/fd/2bv45p595hx05v9r66qt83b80000gn/T/tmpzmfkot34.mp4
+Language: english
+Duration: 246.6 seconds
+
+SUMMARY
+----------------------------------------------------------------------
+Here’s a polished, professional meeting summary in bullet points:
+
+### **Amazon’s AI-Powered QuickCommerce Enhancements**
+- **Image-Based Shopping**:
+  - Users can upload images (e.g., grocery lists, event posters) for AI to analyze and automatically add relevant products to the cart.
+
+- **Voice Shopping**:
+  - Users describe their needs, and AI generates a complete shopping cart with budget optimization.
+
+- **Mission Cards & Tailored Modes**:
+  - **Mission Cards**: Predefined shopping lists for specific needs (e.g., fever recovery, emergency supplies).
+  - **AI Suggestions**: Recommends frequently forgotten items, predicts replenishment needs, and provides weather-based recommendations.
+
+- **Group Purchases**:
+  - Automatically splits bills for shared orders.
+
+- **Order Summary & Delivery**:
+  - Provides a detailed mission summary, including order details and estimated delivery time (ETA).
+
+This AI-driven approach enhances convenience, personalization, and efficiency in the shopping experience.
+
+KEY DECISIONS
+----------------------------------------------------------------------
+1. Amazon's QuickCommerce platform now uses an AI shopping co-pilot that analyzes visual inputs (e.g., grocery lists, event posters, handwritten notes) to extract shopping requirements and automatically add products to the cart.
+2. Users can describe their shopping needs via voice, and the AI will identify relevant products, apply quantity intelligence, generate a complete cart, and optimize the budget based on user constraints.
+3. The platform offers mission cards for predefined shopping scenarios (e.g., birthday parties, movie nights, study nights, road trips) to streamline the shopping process.
+4. Specialized modes like 'fever recovery' and 'emergency' are available to cater to specific user needs.
+5. Quantity intelligence is applied in scenarios like road trips, where the AI suggests specific quantities of products (e.g., four luggage or cabin trolleys, two power banks, dry bags).
+6. Users can review and modify the generated cart through an interactive swipe interface, accepting or rejecting products and adjusting quantities as needed.
+7. The platform suggests frequently forgotten items based on the shopping mission (e.g., luggage strap and locker set for road trips).
+8. Replenishment intelligence predicts when commonly purchased items are running low and recommends timely reorders based on past purchases.
+9. Weather-based recommendations are provided using live weather data (e.g., umbrellas during monsoon season or hydration essentials during heat waves).
+10. For group purchases, the platform automatically splits the bill among friends and displays each person's contribution for easy sharing.
+11. After placing an order, users receive a detailed mission summary including order details, delivery ETA, total cost, and AI-optimized quantities.
+
+ACTION ITEMS
+----------------------------------------------------------------------
+No action items recorded.
+
+OPEN QUESTIONS
+----------------------------------------------------------------------
+No open questions recorded.
+
+TRANSCRIPT
+----------------------------------------------------------------------
+[00:00] Amazon now AI powered QuickCommerce.
+[00:04] Amazon now reimagines QuickCommerce with an AI shopping co-pilot that understands intent
+[00:10] instead of requiring users to manually search and browse.
+[00:13] The journey starts with visual intent engine by uploading an email such as a grocery list
+[00:20] or an event poster or any handwritten notes.
+[00:27] The AI analyzes the image, extracts shopping requirements and automatically adds the necessary
+[00:37] products to the engine, to the cart.
+[00:43] Now, next, users can use the voice shopping.
+[00:50] Users simply describe what they need such as,
+[00:59] I am moving to a new PG, my budget is 2000.
+[01:06] The AI understands the mission, identifies relevant products, applies quantity intelligence
+[01:14] and instantly generates a complete cart.
+[01:17] It also does a budget optimization.
+[01:21] Since I said my budget is 2000, the budget generated will be under 2000.
+[01:30] You can see budget is 194.
+[01:36] For faster shopping, the users can also select from mission cards like birthday parties, movie nights,
+[01:43] study nights, road trip.
+[01:45] There are also modes like fever recovery and emergency modes.
+[01:50] Going to road trip, quantity intelligence has been applied where the AI suggests
+[01:59] four luggage or cabin trolleys, two power banks, dry bags.
+[02:09] The generated items presented through an interactive swipe review interface, users can swipe right to accept the products
+[02:18] or swipe left for a new alternative.
+[02:26] The use of quantity controls to add or remove items as needed.
+[02:37] Once the products are added, Amazon now suggests a frequently forgotten items based on shopping
+[02:51] mission helping users to avoid missing essentials.
+[02:55] As you can see, a luggage strap and locker set is needed while you are travelling for a road trip.
+[03:02] So you can quick add these things from the platform.
+[03:07] The platform also provides replenishment intelligence predicting when commonly purchased items are running low
+[03:15] and recommending timely reorders based on the past purchases.
+[03:20] Using the live weather information, weather based recommendations such as relevant products such as umbrella during monsoon season
+[03:29] or hydration essentials during heat waves.
+[03:34] For a group purchase, split bill automatically divides among friends and displays each person's contribution.
+[03:45] You can copy the split amount and then send it to your friends.
+[03:51] Amazon finally uses place at the order and receive a detailed mission summary including order details, delivery ETA, total cost and all AI optimized quantities.
+
+======================================================================
+Generated: 2026-08-13T09:29:41.959489
+======================================================================

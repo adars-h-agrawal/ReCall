@@ -663,18 +663,26 @@ while the legacy answer-only interface remains available.
 
 ---
 
-# 🖥️ Screenshots
+## 🖥️ Screenshots
 
-> Add screenshots of the current RECALL workspace here.
+### Home Page
 
-Recommended screenshots:
+<p align="center">
+  <img src="demo/imgs/1.png" alt="Home Page" width="100%">
+</p>
 
-```text
-docs/screenshots/landing.png
-docs/screenshots/meeting.png
-docs/screenshots/chat.png
-docs/screenshots/transcript.png
-```
+### Features & Workflow
+
+<table>
+  <tr>
+    <td><img src="demo/imgs/2.png" alt="Screenshot 2"></td>
+    <td><img src="demo/imgs/3.png" alt="Screenshot 3"></td>
+  </tr>
+  <tr>
+    <td><img src="demo/imgs/4.png" alt="Screenshot 4"></td>
+    <td><img src="demo/imgs/5.png" alt="Screenshot 5"></td>
+  </tr>
+</table>
 
 ---
 
